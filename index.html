@@ -1,122 +1,274 @@
-<h1>🚘 ระบบทะเบียนรถ</h1>
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>อ่านทะเบียนรถยนต์</title>
+    <script src="https://unpkg.com/tesseract.js@2.1.4/dist/tesseract.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 500px;
+            box-sizing: border-box;
+            margin-bottom: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #0056b3;
+            margin-bottom: 20px;
+        }
+        .input-section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        input[type="file"] {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        video {
+            width: 100%;
+            max-width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            background-color: #000;
+        }
+        canvas {
+            display: none;
+            width: 100%;
+            max-width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin-top: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .result-section {
+            margin-top: 20px;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+        }
+        .result-item {
+            margin-bottom: 10px;
+        }
+        .result-item strong {
+            color: #007bff;
+        }
+        .loading {
+            text-align: center;
+            font-style: italic;
+            color: #666;
+            margin-top: 10px;
+        }
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            .container {
+                padding: 15px;
+            }
+            h1 {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>อ่านทะเบียนรถยนต์</h1>
 
-<video id="video" autoplay playsinline></video>
+        <div class="input-section">
+            <button id="startCameraButton">เปิดกล้อง</button>
+            <video id="video" autoplay playsinline></video>
+            <button id="captureButton" style="display: none;">ถ่ายรูป</button>
+            <input type="file" id="imageUpload" accept="image/*">
+            <button id="processImageButton">ประมวลผลรูปภาพ</button>
+        </div>
 
-<br><br>
+        <canvas id="canvas" style="display: none;"></canvas>
+        <img id="outputImage" style="display: none;">
 
-<button onclick="scanPlate()">📸 สแกนทะเบียน</button>
+        <div class="result-section">
+            <h2>ผลลัพธ์:</h2>
+            <p class="loading" id="loadingMessage" style="display: none;">กำลังประมวลผล...</p>
+            <div class="result-item"><strong>ทะเบียนรถ:</strong> <span id="licensePlateResult">-</span></div>
+            <div class="result-item"><strong>ชื่อคนขับ:</strong> <span id="driverNameResult">-</span></div>
+            <div class="result-item"><strong>เที่ยวรถ:</strong> <span id="tripResult">-</span></div>
+            <div class="result-item"><strong>สังกัดบริษัท:</strong> <span id="companyResult">-</span></div>
+        </div>
+    </div>
 
-<canvas id="canvas"></canvas>
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+        const outputImage = document.getElementById('outputImage');
+        const startCameraButton = document.getElementById('startCameraButton');
+        const captureButton = document.getElementById('captureButton');
+        const imageUpload = document.getElementById('imageUpload');
+        const processImageButton = document.getElementById('processImageButton');
+        const licensePlateResult = document.getElementById('licensePlateResult');
+        const driverNameResult = document.getElementById('driverNameResult');
+        const tripResult = document.getElementById('tripResult');
+        const companyResult = document.getElementById('companyResult');
+        const loadingMessage = document.getElementById('loadingMessage');
 
-<div id="result"></div>
+        let stream;
 
-<script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
+        // Mock Data
+        const mockData = {
+            'กข 1234': { driver: 'สมชาย ใจดี', trip: 'สาย 101 (รอบเช้า)', company: 'ขนส่งรุ่งเรือง' },
+            'นบ 5678': { driver: 'สมหญิง มีสุข', trip: 'สาย 202 (รอบบ่าย)', company: 'โลจิสติกส์ไทย' },
+            'ผผ 9999': { driver: 'ประยุทธ์ รักชาติ', trip: 'สาย 303 (รอบเย็น)', company: 'ไทยเจริญขนส่ง' },
+            'AB 1234': { driver: 'John Doe', trip: 'Route A (Morning)', company: 'Global Transport' },
+            'CD 5678': { driver: 'Jane Smith', trip: 'Route B (Afternoon)', company: 'International Logistics' }
+        };
 
-body{
-    background:#111;
-    color:white;
-    text-align:center;
-    font-family:sans-serif;
-    padding:20px;
-}
+        startCameraButton.addEventListener('click', async () => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                video.srcObject = stream;
+                video.style.display = 'block';
+                captureButton.style.display = 'block';
+                startCameraButton.style.display = 'none';
+                outputImage.style.display = 'none';
+                resetResults();
+            } catch (err) {
+                console.error('Error accessing camera: ', err);
+                alert('ไม่สามารถเข้าถึงกล้องได้ โปรดตรวจสอบการอนุญาต');
+            }
+        });
 
-video{
-    width:100%;
-    max-width:400px;
-    border-radius:15px;
-}
+        captureButton.addEventListener('click', () => {
+            if (stream) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                outputImage.src = canvas.toDataURL('image/png');
+                outputImage.style.display = 'block';
+                video.style.display = 'none';
+                captureButton.style.display = 'none';
+                startCameraButton.style.display = 'block';
+                stream.getTracks().forEach(track => track.stop());
+                processImage(outputImage.src);
+            }
+        });
 
-button{
-    padding:15px 25px;
-    font-size:20px;
-    border:none;
-    border-radius:10px;
-    background:#00c853;
-    color:white;
-}
+        imageUpload.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    outputImage.src = e.target.result;
+                    outputImage.style.display = 'block';
+                    video.style.display = 'none';
+                    captureButton.style.display = 'none';
+                    startCameraButton.style.display = 'block';
+                    if (stream) {
+                        stream.getTracks().forEach(track => track.stop());
+                    }
+                    resetResults();
+                };
+                reader.readAsDataURL(file);
+            }
+        });
 
-#result{
-    margin-top:30px;
-    background:#222;
-    padding:20px;
-    border-radius:15px;
-}
+        processImageButton.addEventListener('click', () => {
+            if (outputImage.src && outputImage.style.display === 'block') {
+                processImage(outputImage.src);
+            } else {
+                alert('โปรดถ่ายรูปหรืออัปโหลดรูปภาพก่อน');
+            }
+        });
 
-const SHEET_ID = "YOUR_SHEET_ID";
+        async function processImage(imageUrl) {
+            loadingMessage.style.display = 'block';
+            resetResults();
+            try {
+                const worker = Tesseract.createWorker({
+                    logger: m => console.log(m)
+                });
+                await worker.load();
+                await worker.loadLanguage('eng+tha'); // Support English and Thai
+                await worker.initialize('eng+tha');
+                const { data: { text } } = await worker.recognize(imageUrl);
+                await worker.terminate();
 
-const SHEET_URL =
-`https://opensheet.elk.sh/${SHEET_ID}/Sheet1`;
+                const recognizedText = text.replace(/\s/g, '').toUpperCase(); // Remove spaces and convert to uppercase
+                console.log('Recognized Text:', recognizedText);
 
-const video = document.getElementById('video');
+                let foundPlate = 'ไม่พบข้อมูล';
+                let driverInfo = { driver: '-', trip: '-', company: '-' };
 
-navigator.mediaDevices.getUserMedia({
-    video:{
-        facingMode:"environment"
-    }
-})
-.then(stream=>{
-    video.srcObject = stream;
-});
+                // Simple matching for demonstration. In a real app, more robust parsing would be needed.
+                for (const plate in mockData) {
+                    if (recognizedText.includes(plate.replace(/\s/g, ''))) {
+                        foundPlate = plate;
+                        driverInfo = mockData[plate];
+                        break;
+                    }
+                }
 
-async function scanPlate(){
+                licensePlateResult.textContent = foundPlate;
+                driverNameResult.textContent = driverInfo.driver;
+                tripResult.textContent = driverInfo.trip;
+                companyResult.textContent = driverInfo.company;
 
-    document.getElementById('result').innerHTML =
-    "⏳ กำลังสแกน...";
-
-    const canvas = document.getElementById('canvas');
-
-    const ctx = canvas.getContext('2d');
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    ctx.drawImage(video,0,0);
-
-    const image = canvas.toDataURL('image/png');
-
-    const result = await Tesseract.recognize(
-        image,
-        'eng'
-    );
-
-    let text = result.data.text;
-
-    text = text.replace(/\s/g,'');
-
-    const response = await fetch(SHEET_URL);
-
-    const data = await response.json();
-
-    let found = false;
-
-    data.forEach(row=>{
-
-        if(text.includes(row.plate)){
-
-            document.getElementById('result').innerHTML = `
-                <h2>✅ พบข้อมูล</h2>
-
-                <p>🚘 ${row.plate}</p>
-
-                <p>👤 ${row.driver}</p>
-
-                <p>🚌 ${row.trip}</p>
-
-                <p>🏢 ${row.company}</p>
-            `;
-
-            found = true;
+            } catch (error) {
+                console.error('OCR Error:', error);
+                licensePlateResult.textContent = 'เกิดข้อผิดพลาดในการอ่านทะเบียนรถ';
+                driverNameResult.textContent = '-';
+                tripResult.textContent = '-';
+                companyResult.textContent = '-';
+            } finally {
+                loadingMessage.style.display = 'none';
+            }
         }
 
-    });
-
-    if(!found){
-
-        document.getElementById('result').innerHTML = `
-            <h2>❌ ไม่พบข้อมูล</h2>
-
-            <p>${text}</p>
-        `;
-    }
-
-}
+        function resetResults() {
+            licensePlateResult.textContent = '-';
+            driverNameResult.textContent = '-';
+            tripResult.textContent = '-';
+            companyResult.textContent = '-';
+        }
+    </script>
+</body>
+</html>
