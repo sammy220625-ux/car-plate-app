@@ -1,0 +1,23 @@
+{
+  "name": "car-plate-app",
+  "version": "1.0.0",
+  "description": "Car plate recognition app with OCR",
+  "main": "index.html",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sammy220625-ux/car-plate-app.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/sammy220625-ux/car-plate-app/issues"
+  },
+  "homepage": "https://github.com/sammy220625-ux/car-plate-app#readme",
+  "dependencies": {
+    "@vercel/speed-insights": "^2.0.0"
+  }
+}
